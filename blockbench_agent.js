@@ -1071,9 +1071,9 @@ print("RESULT_JSON:" + json.dumps({"results": results}))
     "1) PARTS: does every bone hold the right part? Legs are the pieces under the body that reach the ground; front legs are at -Z, back legs at +Z; right is +X.",
     "The head is at the front end, a tail at the back end, a neck between body and head. *_foot / *_hand must be the outer (lower or farther) part of its limb.",
     "Watch for: swapped left/right or front/back, a tail or ear treated as a limb, head cubes left in the body, a limb missing a cube.",
-    "2) PIVOTS: each pivot must be where that part bends. Leg/arm: on the top face where it meets the body. Foot/hand: on its top face (knee/elbow joint).",
+    "2) PIVOTS: each pivot must be where that part bends. Leg: on the top face where it meets the body. Arm: at the shoulder, on the contact face with the chest, with Y about midway up the chest cubes (not at the top of the arm). Foot/hand: on its top face (knee/elbow joint).",
     "h_head: back-bottom of the head (neck joint). lower_jaw: back edge of the jaw (hinge). neck: where it meets the body. tail_0: face touching the body; each next tail segment: its front face.",
-    "chest: at the waist where it meets the torso. body/torso: roughly the centre of their cubes. root: [0,0,0]. Mirrored left/right limbs must have mirrored pivots. A pivot in the middle or at the far end of a limb is wrong.",
+    "chest: at the waist where it meets the torso. body/torso: centered on x/z axis, but lower point on the y-axis that connects to the leg bones. Mirrored left/right limbs must have mirrored pivots. A pivot in the middle or at the far end of a limb is wrong.",
     "Only report real problems that would make the rig look or animate wrong; ignore offsets of 1 pixel or less and style choices. If everything is fine, approve.",
     "For each problem, name the bone and give a concrete fix (which cubes to move, or the pivot coordinates to use). Answer by calling submit_review.",
   ].join(" ");
@@ -1411,6 +1411,44 @@ print("RESULT_JSON:" + json.dumps({"results": results}))
         );
       }
     });
+
+    // torso and chest bend from their bottom edge for human rigs
+    if (template === "humanoid") {
+      ["torso", "chest"].forEach((name) => {
+        const b = byName[name];
+        if (!b || !Array.isArray(b.pivot) || b.pivot.length !== 3) return;
+        const box = unionBox(cubesOf(name));
+        if (!box) return;
+        const bottom = box.min[1];
+        if (Math.abs(b.pivot[1] - bottom) > JOINT_TOL) {
+          const suggested = [
+            r2((box.min[0] + box.max[0]) / 2),
+            r2(bottom),
+            r2((box.min[2] + box.max[2]) / 2),
+          ];
+          errors.push(
+            `Bone "${name}": pivot [${b.pivot}] must be at the bottom of its cubes (y = ${r2(bottom)}) so it bends naturally. Suggested pivot: [${suggested}].`,
+          );
+        }
+      });
+    }
+
+    // arms pivot at the shoulder: midway up the chest
+    if (template === "humanoid") {
+      const chestBox = unionBox(cubesOf("chest"));
+      if (chestBox) {
+        const midY = (chestBox.min[1] + chestBox.max[1]) / 2;
+        ["right_arm", "left_arm"].forEach((name) => {
+          const b = byName[name];
+          if (!b || !Array.isArray(b.pivot) || b.pivot.length !== 3) return;
+          if (Math.abs(b.pivot[1] - midY) > JOINT_TOL) {
+            errors.push(
+              `Bone "${name}": pivot [${b.pivot}] must be at the shoulder, midway up the chest (y = ${r2(midY)}). Suggested pivot: [${b.pivot[0]}, ${r2(midY)}, ${b.pivot[2]}].`,
+            );
+          }
+        });
+      }
+    }
 
     // mirrored limbs need mirrored pivots
     bones.forEach((b) => {
@@ -1841,10 +1879,10 @@ print("RESULT_JSON:" + json.dumps({"results": results}))
     "Use the template bone names exactly (front_right_leg, tail_0, h_head ...); left/right are the creature's own sides (+X = right); front = -Z.",
     "Four-legged models: if there is a neck (cubes between the body and the head), make a neck bone (body > neck > h_head) with those cubes; do not leave neck cubes in body or h_head. Pivot the neck where it meets the body.",
     "Split every leg and arm in two: the inner cubes (attached to the body) are *_leg / *_arm, the outer cubes (shin/paw/foot, forearm/hand) are its *_foot / *_hand bone.",
-    "Pivots go where the part bends, and MUST be inside or on the edge of one of that bone's own cubes (use the min/max from inspect_model): leg/arm at the top face where it meets the body,",
+    "Pivots go where the part bends, and MUST be inside or on the edge of one of that bone's own cubes (use the min/max from inspect_model): leg at the top face where it meets the body, arm at the shoulder joint: on the contact face with the chest, Y about midway up the chest cubes,",
     "foot at the top face of the foot cubes (the knee/ankle joint), hand at the top of the hand cubes, h_head at the back-bottom of the head (neck), lower_jaw at the back edge of the jaw (hinge),",
-    "tail_0 at the face touching the body and each next tail segment at its front face, chest at the waist where it meets the torso, torso and body at the centre of their cubes, root at [0,0,0].",
-    "Every pivot (except root, body and torso) must sit on the contact face between the bone and the part it hangs from; mirrored left/right limbs need mirrored pivots. The code checks both and suggests a pivot if you miss.",
+    "tail_0 at the face touching the body and each next tail segment at its front face, chest at the lowest y value where it meets the torso, torso and body should be centered on the x/z axis, and have the lowest y value within the main cube.",
+    "Every pivot (except root) must sit on the contact face between the bone and the part it hangs from; mirrored left/right limbs need mirrored pivots. The code checks both and suggests a pivot if you miss.",
     "Report any warnings from apply_rig to the user.",
     "If the user asks for extra bones such as fingers, toes, claws or ears, add them as extra bones under the part they grow from (fingers/claws under the *_hand or *_foot, ears under h_head), named like right_hand_finger_0, right_hand_finger_1; pivot each one on the face where it joins its parent part. The *_hand / *_foot itself must still keep at least one cube (the palm or sole).",
     "Mirrored limbs (right_* / left_* bones): share_mirrored_limb_uv makes all east/west faces of exactly mirrored cubes use one UV. Default source is the right side's outer (east) face; ask if the user wants the left kept instead only when they hint at it.",
