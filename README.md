@@ -4,7 +4,7 @@ A Blockbench plugin that adds an AI chat panel. You tell it what you need ("rig 
 
 It doesn't generate models, textures or animations. It only automates the repetitive parts of working on models you made yourself.
 
-![Auto-rigging demo](docs/demo.gif1)
+![Auto-rigging demo](docs/demo.gif)
 
 ## Features
 
